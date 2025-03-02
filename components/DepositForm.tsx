@@ -51,23 +51,25 @@ export default function DepositForm() {
             try {
                 await approveToken0();
                 await approveToken1();
-                const txHash = await addLiquidity();
-                if (txHash) {
-                    toast.success(
-                        <span>
-                            Liquidity added successfully!{' '}
-                            <a
-                                href={`https://arbiscan.io/tx/${txHash}`}
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='underline'
-                            >
-                                View Transaction
-                            </a>
-                        </span>
-                    );
-                }
+                const result = await addLiquidity();
+                // Assuming result is an object with keys: amount0, amount1, sharesReceived
+                toast.success(
+                    <span>
+                        Liquidity added successfully! Received{' '}
+                        <a
+                            href={`https://arbiscan.io/tx/${
+                                result?.sharesReceived || result
+                            }`}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            className='underline'
+                        >
+                            View Transaction
+                        </a>
+                    </span>
+                );
             } catch (error) {
+                console.error('Transaction failed:', error);
                 toast.error(`Transaction failed: ${error}`);
             }
         },
@@ -97,6 +99,7 @@ export default function DepositForm() {
             <form
                 onSubmit={handleSubmit}
                 className='space-y-4 bg-gray-100 p-6 rounded-lg'
+                role='form'
             >
                 <h2 className='text-xl font-bold mb-4'>Deposit Liquidity</h2>
                 {contextError && (
@@ -151,6 +154,7 @@ export default function DepositForm() {
                     disabled={isSubmitDisabled()}
                     isLoading={isLoading}
                     type='submit'
+                    data-testid='submit-button'
                 >
                     Submit Deposit
                 </PrimaryButton>
