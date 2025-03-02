@@ -1,28 +1,41 @@
 'use client';
 
-import {ConnectButton} from '@rainbow-me/rainbowkit';
+import React from 'react';
 import {useAccount, useChainId} from 'wagmi';
 import {arbitrum} from 'wagmi/chains';
 import DepositForm from '@/components/DepositForm';
+import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function Home() {
-    const {isConnected} = useAccount();
+    const {isConnected, isConnecting, isReconnecting} = useAccount();
     const chainId = useChainId();
+    const isLoading = isConnecting || isReconnecting;
+    const isCorrectNetwork = chainId === arbitrum.id;
 
     return (
-        <main className='p-6'>
-            <h1 className='text-2xl font-bold mb-4'>Arrakis Deposit App</h1>
-            <ConnectButton chainStatus='icon'/>
-            {chainId && chainId !== arbitrum.id && (
-                <p className='text-red-500 mt-4'>
-                    Please switch to the Arbitrum network to continue.
-                </p>
-            )}
-            {isConnected && (
-                <div className='mt-6'>
-                    <DepositForm />
-                </div>
-            )}
-        </main>
+        <div className='min-h-screen flex flex-col'>
+            <Navbar />
+            <main className='p-6 flex-grow'>
+                {!isLoading && !isConnected && (
+                    <p className='text-center text-gray-700 mt-8'>
+                        Please connect your wallet.
+                    </p>
+                )}
+                {isLoading && <LoadingSpinner />}
+                {!isLoading && isConnected && !isCorrectNetwork && (
+                    <div className='bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mt-4'>
+                        <p>
+                            Please switch to the Arbitrum network to continue.
+                        </p>
+                    </div>
+                )}
+                {!isLoading && isConnected && isCorrectNetwork && (
+                    <div className='mt-6'>
+                        <DepositForm />
+                    </div>
+                )}
+            </main>
+        </div>
     );
 }

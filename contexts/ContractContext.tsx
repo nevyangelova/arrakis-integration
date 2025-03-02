@@ -43,7 +43,7 @@ interface ContractContextType {
     updateReth: (value: string) => void;
     approveToken0: () => Promise<void>;
     approveToken1: () => Promise<void>;
-    addLiquidity: () => Promise<void>;
+    addLiquidity: () => Promise<any>;
     isLoading: boolean;
     error: string | null;
 }
@@ -172,22 +172,12 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
             // Convert human-readable amounts to (wei)
             const amount0Max = parseUnits(depositToken0, 18);
             const amount1Max = parseUnits(depositToken1, 18);
-
             // Calculate minimum acceptable amounts with 5% slippage tolerance
             const amount0Min = (amount0Max * 95n) / 100n;
             const amount1Min = (amount1Max * 95n) / 100n;
 
-            console.log({
-                amount0Max: amount0Max.toString(),
-                amount1Max: amount1Max.toString(),
-                amount0Min: amount0Min.toString(),
-                amount1Min: amount1Min.toString(),
-                amountSharesMin: mintAmountMin.toString(),
-                mintAmountsArray,
-            });
-
             // Parameters I got from the router contract ABI
-            await writeContractAsync({
+            const result = await writeContractAsync({
                 address: ARRAKIS_ROUTER_ADDRESS,
                 abi: RouterABI,
                 functionName: 'addLiquidity',
@@ -204,6 +194,8 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
                     },
                 ],
             });
+            console.log({result})
+            return result;
         } catch (error) {
             setError('Failed to add liquidity');
         } finally {

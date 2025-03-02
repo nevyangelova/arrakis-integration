@@ -6,7 +6,7 @@ import {injected} from 'wagmi/connectors';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const WagmiConfig = createConfig({
-    chains: [arbitrum],
+    chains: [mainnet, arbitrum],
     connectors: [
         injected({
             target() {

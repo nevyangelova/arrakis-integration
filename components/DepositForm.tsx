@@ -1,8 +1,11 @@
 'use client';
 
-import React, { useCallback} from 'react';
+import React, {useCallback} from 'react';
 import {useContract} from '@/contexts/ContractContext';
 import {formatNumberForDisplay, formatUserInput} from '@/utils/formatters';
+import Input from '@/components/Input';
+import PrimaryButton from '@/components/PrimaryButton';
+import toast from 'react-hot-toast';
 
 export default function DepositForm() {
     const {
@@ -19,20 +22,27 @@ export default function DepositForm() {
         error: contextError,
     } = useContract();
 
-    const SLIPPAGE = 0.05; // 5% slippage
+    const SLIPPAGE = 0.05;
 
-    const handleMaxWeth = () => {
+    const handleInputChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>, isWeth: boolean) => {
+            const formatted = formatUserInput(e.target.value);
+            if (isWeth) {
+                updateWeth(formatted);
+            } else {
+                updateReth(formatted);
+            }
+        },
+        [updateWeth, updateReth]
+    );
+
+    const handleMaxWeth = useCallback(() => {
         if (balanceToken0) updateWeth(balanceToken0);
-    };
+    }, [balanceToken0, updateWeth]);
 
-    const handleMaxReth = () => {
+    const handleMaxReth = useCallback(() => {
         if (balanceToken1) updateReth(balanceToken1);
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>, isWeth: boolean) => {
-        const formattedValue = formatUserInput(e.target.value);
-        isWeth ? updateWeth(formattedValue) : updateReth(formattedValue);
-    }, [updateWeth, updateReth]);
+    }, [balanceToken1, updateReth]);
 
     const handleSubmit = useCallback(
         async (e: React.FormEvent) => {
@@ -41,12 +51,32 @@ export default function DepositForm() {
             try {
                 await approveToken0();
                 await approveToken1();
-                await addLiquidity();
+                const txHash = await addLiquidity();
+                toast.success(
+                    <span>
+                        Liquidity added successfully!{' '}
+                        <a
+                            href={`https://arbiscan.io/tx/${txHash}`}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            className='underline'
+                        >
+                            View Transaction
+                        </a>
+                    </span>
+                );
             } catch (error) {
                 console.error('Transaction failed:', error);
+                toast.error(`Transaction failed: ${error}`);
             }
         },
-        [approveToken0, approveToken1, addLiquidity]
+        [
+            depositToken0,
+            depositToken1,
+            approveToken0,
+            approveToken1,
+            addLiquidity,
+        ]
     );
 
     const isSubmitDisabled = useCallback(() => {
@@ -76,129 +106,53 @@ export default function DepositForm() {
                 <div className='mb-2 text-sm text-gray-600'>
                     Slippage Tolerance: {SLIPPAGE * 100}%
                 </div>
-                {/* WETH Input */}
-                <div>
-                    <label className='block text-sm font-medium text-gray-700'>
-                        WETH Amount
-                    </label>
-                    <div className='mt-1 flex rounded-md shadow-sm'>
-                        <input
-                            value={depositToken0}
-                            onChange={(e) => handleInputChange(e, true)}
-                            className='flex-1 border rounded-l-md p-2'
-                            placeholder='0.0'
-                        />
-                        <button
-                            type='button'
-                            onClick={handleMaxWeth}
-                            className='bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600'
-                        >
-                            Max
-                        </button>
-                    </div>
-                    <div className='mt-1 flex justify-between text-sm text-gray-500'>
-                        <span>
-                            Balance:{' '}
-                            {formatNumberForDisplay(
-                                Number(balanceToken0 || 0),
-                                5
-                            )}{' '}
-                            WETH
-                        </span>
-                        <span>
-                            Min:{' '}
-                            {depositToken0
-                                ? formatNumberForDisplay(
-                                      Number(depositToken0) * (1 - SLIPPAGE),
-                                      5
-                                  )
-                                : '0'}{' '}
-                            WETH
-                        </span>
-                    </div>
-                </div>
-                {/* RETH Input */}
-                <div>
-                    <label className='block text-sm font-medium text-gray-700'>
-                        RETH Amount
-                    </label>
-                    <div className='mt-1 flex rounded-md shadow-sm'>
-                        <input
-                            value={depositToken1}
-                            onChange={(e) => handleInputChange(e, false)}
-                            className='flex-1 border rounded-l-md p-2'
-                            placeholder='0.0'
-                        />
-                        <button
-                            type='button'
-                            onClick={handleMaxReth}
-                            className='bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600'
-                        >
-                            Max
-                        </button>
-                    </div>
-                    <div className='mt-1 flex justify-between text-sm text-gray-500'>
-                        <span>
-                            Balance:{' '}
-                            {formatNumberForDisplay(
-                                Number(balanceToken1 || 0),
-                                5
-                            )}{' '}
-                            RETH
-                        </span>
-                        <span>
-                            Min:{' '}
-                            {depositToken1
-                                ? formatNumberForDisplay(
-                                      Number(depositToken1) * (1 - SLIPPAGE),
-                                      5
-                                  )
-                                : '0'}{' '}
-                            RETH
-                        </span>
-                    </div>
-                </div>
-                <button
-                    type='submit'
+                <Input
+                    label='WETH Amount'
+                    value={depositToken0}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        handleInputChange(e, true)
+                    }
+                    onMax={handleMaxWeth}
+                    balanceDisplay={`${formatNumberForDisplay(
+                        Number(balanceToken0 || 0),
+                        5
+                    )} WETH`}
+                    minDisplay={
+                        depositToken0
+                            ? `${formatNumberForDisplay(
+                                  Number(depositToken0) * (1 - SLIPPAGE),
+                                  5
+                              )} WETH`
+                            : '0 WETH'
+                    }
+                />
+                <Input
+                    label='RETH Amount'
+                    value={depositToken1}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        handleInputChange(e, false)
+                    }
+                    onMax={handleMaxReth}
+                    balanceDisplay={`${formatNumberForDisplay(
+                        Number(balanceToken1 || 0),
+                        5
+                    )} RETH`}
+                    minDisplay={
+                        depositToken1
+                            ? `${formatNumberForDisplay(
+                                  Number(depositToken1) * (1 - SLIPPAGE),
+                                  5
+                              )} RETH`
+                            : '0 RETH'
+                    }
+                />
+                <PrimaryButton
                     disabled={isSubmitDisabled()}
-                    className={`
-            w-full py-3 rounded-lg font-medium text-white text-lg
-            transition-all duration-200
-            ${
-                isSubmitDisabled()
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-green-500 hover:bg-green-600 active:transform active:scale-[0.98]'
-            }
-          `}
+                    isLoading={isLoading}
+                    type='submit'
                 >
-                    {isLoading ? (
-                        <div className='flex items-center justify-center gap-2'>
-                            <svg
-                                className='animate-spin h-5 w-5 text-white'
-                                xmlns='http://www.w3.org/2000/svg'
-                                fill='none'
-                                viewBox='0 0 24 24'
-                            >
-                                <circle
-                                    className='opacity-25'
-                                    cx='12'
-                                    cy='12'
-                                    r='10'
-                                    stroke='currentColor'
-                                    strokeWidth='4'
-                                ></circle>
-                                <path
-                                    className='opacity-75'
-                                    fill='currentColor'
-                                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
-                                ></path>
-                            </svg>
-                            Processing...
-                        </div>
-                    ) : (
-                        'Submit Deposit'
-                    )}
-                </button>
+                    Submit Deposit
+                </PrimaryButton>
             </form>
         </div>
     );
