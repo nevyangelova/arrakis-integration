@@ -111,7 +111,6 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
         ],
         query: {enabled: Boolean(depositToken0) && Boolean(depositToken1)},
     });
-    console.log({mintAmounts});
     const mintAmountsArray = mintAmounts as
         | [bigint, bigint, bigint]
         | undefined;
@@ -194,7 +193,6 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
                     },
                 ],
             });
-            console.log({result})
             return result;
         } catch (error) {
             setError('Failed to add liquidity');

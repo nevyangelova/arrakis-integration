@@ -52,21 +52,22 @@ export default function DepositForm() {
                 await approveToken0();
                 await approveToken1();
                 const txHash = await addLiquidity();
-                toast.success(
-                    <span>
-                        Liquidity added successfully!{' '}
-                        <a
-                            href={`https://arbiscan.io/tx/${txHash}`}
-                            target='_blank'
-                            rel='noopener noreferrer'
-                            className='underline'
-                        >
-                            View Transaction
-                        </a>
-                    </span>
-                );
+                if (txHash) {
+                    toast.success(
+                        <span>
+                            Liquidity added successfully!{' '}
+                            <a
+                                href={`https://arbiscan.io/tx/${txHash}`}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='underline'
+                            >
+                                View Transaction
+                            </a>
+                        </span>
+                    );
+                }
             } catch (error) {
-                console.error('Transaction failed:', error);
                 toast.error(`Transaction failed: ${error}`);
             }
         },
