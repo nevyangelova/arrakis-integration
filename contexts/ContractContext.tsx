@@ -6,8 +6,10 @@ import React, {
     useEffect,
     useState,
     ReactNode,
+    useCallback,
+    useMemo,
 } from 'react';
-import {useAccount, useReadContract, useWriteContract} from 'wagmi';
+import {useAccount, useBalance, useReadContract, useWriteContract} from 'wagmi';
 import {formatUnits, parseUnits, zeroAddress} from 'viem';
 import {HelperABI, ResolverABI, RouterABI} from '@/lib/abis';
 import {
@@ -21,7 +23,7 @@ import {
 
 /**
  * ContractContext - A central place to manage all our DeFi liquidity operations
- * 
+ *
  * This context provides a clean way to:
  * 1. Read token data from the blockchain
  * 2. Calculate proper ratios between tokens
@@ -56,6 +58,7 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
     const [depositToken0, setDepositToken0] = useState<string>('');
     const [depositToken1, setDepositToken1] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState<boolean>(false);
     const [activeField, setActiveField] = useState<'weth' | 'reth' | null>(
         null
     );
@@ -79,44 +82,21 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
         : null;
 
     // Check how much of each token the user already has in their wallet
-    const {data: balanceToken0Data, isLoading: isLoadingBalance0} =
-        useReadContract({
-            address: WETH_ADDRESS as `0x${string}`,
-            abi: [
-                {
-                    name: 'balanceOf',
-                    type: 'function',
-                    inputs: [{name: 'account', type: 'address'}],
-                    outputs: [{name: 'balance', type: 'uint256'}],
-                    stateMutability: 'view',
-                },
-            ],
-            functionName: 'balanceOf',
-            args: [address!],
-            query: {enabled: Boolean(address)},
-        });
-    const {data: balanceToken1Data, isLoading: isLoadingBalance1} =
-        useReadContract({
-            address: RETH_ADDRESS as `0x${string}`,
-            abi: [
-                {
-                    name: 'balanceOf',
-                    type: 'function',
-                    inputs: [{name: 'account', type: 'address'}],
-                    outputs: [{name: 'balance', type: 'uint256'}],
-                    stateMutability: 'view',
-                },
-            ],
-            functionName: 'balanceOf',
-            args: [address!],
-            query: {enabled: Boolean(address)},
-        });
+    // Using wagmi getBalance instead of a hard-coded ABI with useReadContract
+    const {data: wethBalanceData, isLoading: isLoadingWeth} = useBalance({
+        address,
+        token: WETH_ADDRESS,
+    });
+    const {data: rethBalanceData, isLoading: isLoadingReth} = useBalance({
+        address,
+        token: RETH_ADDRESS,
+    });
     // Convert raw balance data to human-readable format
-    const balanceToken0 = balanceToken0Data
-        ? formatUnits(balanceToken0Data, 18)
+    const balanceToken0 = wethBalanceData
+        ? formatUnits(wethBalanceData.value, wethBalanceData.decimals)
         : null;
-    const balanceToken1 = balanceToken1Data
-        ? formatUnits(balanceToken1Data, 18)
+    const balanceToken1 = rethBalanceData
+        ? formatUnits(rethBalanceData.value, rethBalanceData.decimals)
         : null;
 
     // Use the resolver contract to calculate how many LP tokens the user get
@@ -138,80 +118,61 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
     // The third value is how many LP tokens the users get as the minimum acceptable amount
     const mintAmountMin = mintAmountsArray ? mintAmountsArray[2] : 0n;
 
-        const updateWeth = (value: string) => {
-        setActiveField('weth');
-        setDepositToken0(value);
-    };
-    
-    const updateReth = (value: string) => {
-        setActiveField('reth');
-        setDepositToken1(value);
-    };
-
-    // This effect automatically calculates the other token amount whenever one changes
-    // It's important to maintain the correct ratio based on what's already in the pool
-    useEffect(() => {
-        if (!underlying) return;
-        
-        if (activeField === 'weth' && depositToken0) {
-            // User entered WETH amount, calculate RETH needed
-            const ratio = underlying.amount1 / underlying.amount0;
-            const computed = (Number(depositToken0) * ratio).toFixed(18);
-            setDepositToken1(computed);
-        } else if (activeField === 'reth' && depositToken1) {
-            // User entered RETH amount, calculate WETH needed
-            const ratio = underlying.amount1 / underlying.amount0;
-            const computed = (Number(depositToken1) / ratio).toFixed(18);
-            setDepositToken0(computed);
-        }
-    }, [depositToken0, depositToken1, activeField, underlying]);
-
     // The DeFi router needs permission to move tokens from the wallet
-    const approveToken = async (
-        tokenAddress: string,
-        depositAmount: string
-    ) => {
-        if (!isConnected || !depositAmount) return;
-        try {
-            await writeContractAsync({
-                address: tokenAddress as `0x${string}`,
-                abi: [
-                    {
-                        name: 'approve',
-                        type: 'function',
-                        inputs: [
-                            {name: 'spender', type: 'address'},
-                            {name: 'amount', type: 'uint256'},
-                        ],
-                        outputs: [{name: '', type: 'bool'}],
-                        stateMutability: 'nonpayable',
-                    },
-                ],
-                functionName: 'approve',
-                args: [
-                    ARRAKIS_ROUTER_ADDRESS as `0x${string}`,
-                    parseUnits(depositAmount, 18), // Convert from user-friendly number to blockchain format
-                ],
-            });
-        } catch (error) {
-            setError(`Failed to approve token at ${tokenAddress}`);
-        }
-    };
+    const approveToken = useCallback(
+        async (tokenAddress: string, depositAmount: string) => {
+            if (!isConnected || !depositAmount) return;
+            setLoading(true);
+            setError(null);
+            try {
+                await writeContractAsync({
+                    address: tokenAddress as `0x${string}`,
+                    abi: [
+                        {
+                            name: 'approve',
+                            type: 'function',
+                            inputs: [
+                                {name: 'spender', type: 'address'},
+                                {name: 'amount', type: 'uint256'},
+                            ],
+                            outputs: [{name: '', type: 'bool'}],
+                            stateMutability: 'nonpayable',
+                        },
+                    ],
+                    functionName: 'approve',
+                    args: [
+                        ARRAKIS_ROUTER_ADDRESS as `0x${string}`,
+                        parseUnits(depositAmount, 18), // Convert from user-friendly number to blockchain format
+                    ],
+                });
+            } catch (error) {
+                setError(`Failed to approve token at ${tokenAddress}`);
+            } finally {
+                setLoading(false);
+            }
+        },
+        [isConnected, writeContractAsync]
+    );
 
     // Aprove spending caps
-    const approveToken0 = async () =>
-        await approveToken(WETH_ADDRESS, depositToken0);
-    const approveToken1 = async () =>
-        await approveToken(RETH_ADDRESS, depositToken1);
+    const approveToken0 = useCallback(() => {
+        return approveToken(WETH_ADDRESS, depositToken0);
+    }, [approveToken, depositToken0]);
+
+    const approveToken1 = useCallback(() => {
+        return approveToken(RETH_ADDRESS, depositToken1);
+    }, [approveToken, depositToken1]);
 
     // Add liquidity to the pool
-    const addLiquidity = async () => {
+    const addLiquidity = useCallback(async () => {
         if (!isConnected || !mintAmountsArray) return;
+        setLoading(true);
+        setError(null);
         try {
             // Convert human-readable amounts to (wei)
             const amount0Max = parseUnits(depositToken0, 18);
             const amount1Max = parseUnits(depositToken1, 18);
-            
+
             // Calculate minimum acceptable amounts with 5% slippage tolerance
             const amount0Min = (amount0Max * 95n) / 100n;
             const amount1Min = (amount1Max * 95n) / 100n;
@@ -224,7 +185,7 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
                 amountSharesMin: mintAmountMin.toString(),
                 mintAmountsArray,
             });
-            
+
             // Parameters I got from the router contract ABI
             await writeContractAsync({
                 address: ARRAKIS_ROUTER_ADDRESS,
@@ -245,28 +206,83 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
             });
         } catch (error) {
             setError('Failed to add liquidity');
+        } finally {
+            setLoading(false);
         }
-    };
-
-    const isLoading =
-        isLoadingUnderlying || isLoadingBalance0 || isLoadingBalance1;
-
-    const value = {
-        token0: WETH_ADDRESS,
-        token1: RETH_ADDRESS,
-        underlying,
-        balanceToken0,
-        balanceToken1,
+    }, [
+        isConnected,
+        mintAmountsArray,
         depositToken0,
         depositToken1,
-        updateWeth,
-        updateReth,
-        approveToken0,
-        approveToken1,
-        addLiquidity,
-        isLoading,
-        error,
-    };
+        mintAmountMin,
+        writeContractAsync,
+        address,
+    ]);
+
+    const updateWeth = useCallback((value: string) => {
+        setActiveField('weth');
+        setDepositToken0(value);
+    }, []);
+
+    const updateReth = useCallback((value: string) => {
+        setActiveField('reth');
+        setDepositToken1(value);
+    }, []);
+
+    // This effect automatically calculates the other token amount whenever one changes
+    // It's important to maintain the correct ratio based on what's already in the pool
+    useEffect(() => {
+        if (!underlying) return;
+
+        if (activeField === 'weth' && depositToken0) {
+            // User entered WETH amount, calculate RETH needed
+            const ratio = underlying.amount1 / underlying.amount0;
+            const computed = (Number(depositToken0) * ratio).toFixed(18);
+            setDepositToken1(computed);
+        } else if (activeField === 'reth' && depositToken1) {
+            // User entered RETH amount, calculate WETH needed
+            const ratio = underlying.amount1 / underlying.amount0;
+            const computed = (Number(depositToken1) / ratio).toFixed(18);
+            setDepositToken0(computed);
+        }
+    }, [depositToken0, depositToken1, activeField, underlying]);
+
+    const isLoading =
+        isLoadingUnderlying || isLoadingWeth || isLoadingReth || loading;
+
+    const value = useMemo(
+        () => ({
+            token0: WETH_ADDRESS,
+            token1: RETH_ADDRESS,
+            underlying,
+            balanceToken0,
+            balanceToken1,
+            depositToken0,
+            depositToken1,
+            updateWeth,
+            updateReth,
+            approveToken0,
+            approveToken1,
+            addLiquidity,
+            isLoading,
+            error,
+            loading,
+        }),
+        [
+            underlying,
+            balanceToken0,
+            balanceToken1,
+            depositToken0,
+            depositToken1,
+            updateWeth,
+            updateReth,
+            approveToken0,
+            approveToken1,
+            addLiquidity,
+            isLoading,
+            error,
+        ]
+    );
 
     return (
         <ContractContext.Provider value={value}>
