@@ -51,6 +51,56 @@ export const formatBlockchainErrorMessage = (
     error: any,
     fallbackMessage: string
 ): string => {
-    if (error.reason === 'rejected') return 'Rejected by user';
+    // If error is null or undefined, return the fallback message
+    if (!error) return fallbackMessage;
+
+    // Check for user rejection patterns across different wallets
+    if (
+        error.reason === 'rejected' ||
+        error.message?.includes('User denied transaction') ||
+        error.message?.includes('User rejected') ||
+        error.message?.includes('denied transaction signature')
+    ) {
+        return 'Transaction was rejected by the user';
+    }
+
+    // Check for insufficient funds
+    if (
+        error.message?.includes('insufficient funds') ||
+        error.message?.includes('exceeds balance')
+    ) {
+        return 'Insufficient funds in your wallet';
+    }
+
+    // Check for gas estimation failures
+    if (error.message?.includes('gas required exceeds')) {
+        return 'Transaction would fail - possibly due to contract requirements';
+    }
+
+    // Network errors
+    if (
+        error.message?.includes('network') ||
+        error.message?.includes('disconnected')
+    ) {
+        return 'Network error - please check your connection';
+    }
+
+    // Extract specific error message if available
+    if (error.message) {
+        // Try to extract a more readable part of the error message
+        const detailsMatch = error.message.match(/Details: (.*?)(\.|$)/);
+        if (detailsMatch && detailsMatch[1]) {
+            return detailsMatch[1];
+        }
+
+        // If the message is too long, try to extract a meaningful part
+        if (error.message.length > 100) {
+            return `${fallbackMessage} - ${error.message.substring(0, 100)}...`;
+        }
+
+        return `${fallbackMessage} - ${error.message}`;
+    }
+
+    // Default fallback message if we couldn't extract anything useful
     return fallbackMessage;
 };

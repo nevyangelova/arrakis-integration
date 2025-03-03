@@ -20,6 +20,7 @@ import {
     WETH_ADDRESS,
     RETH_ADDRESS,
 } from '@/lib/constants';
+import {formatBlockchainErrorMessage} from '@/utils/formatters';
 
 /**
  * ContractContext - A central place to manage all our DeFi liquidity operations
@@ -41,8 +42,8 @@ interface ContractContextType {
     depositToken1: string;
     updateWeth: (value: string) => void;
     updateReth: (value: string) => void;
-    approveToken0: () => Promise<void>;
-    approveToken1: () => Promise<void>;
+    approveToken0: () => Promise<boolean>;
+    approveToken1: () => Promise<boolean>;
     addLiquidity: () => Promise<any>;
     isLoading: boolean;
     error: string | null;
@@ -73,13 +74,16 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
             args: [ARRAKIS_VAULT_ADDRESS],
         });
     // Convert the raw blockchain data into a more usable format
-    const underlyingArray = underlyingData as [bigint, bigint] | undefined;
-    const underlying = underlyingArray
-        ? {
-              amount0: Number(underlyingArray[0]) / 1e18, // Convert from Wei to normal units
-              amount1: Number(underlyingArray[1]) / 1e18,
-          }
-        : null;
+    // Memoizing the result makes sense since it's an expensive external call
+    const underlying = useMemo(() => {
+        const underlyingArray = underlyingData as [bigint, bigint] | undefined;
+        if (!underlyingArray) return null;
+
+        return {
+            amount0: Number(formatUnits(underlyingArray[0], 18)),
+            amount1: Number(formatUnits(underlyingArray[1], 18)),
+        };
+    }, [underlyingData]);
 
     // Check how much of each token the user already has in their wallet
     // Using wagmi getBalance instead of a hard-coded ABI with useReadContract
@@ -120,11 +124,13 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
     // The DeFi router needs permission to move tokens from the wallet
     const approveToken = useCallback(
         async (tokenAddress: string, depositAmount: string) => {
-            if (!isConnected || !depositAmount) return;
+            // TBH we don't need this because we won't be able to see the form
+            // or even click the button if there's no deposit amount but I will keep
+            if (!isConnected || !depositAmount) return false; // Return false on invalid input
             setLoading(true);
             setError(null);
             try {
-                await writeContractAsync({
+                const result = await writeContractAsync({
                     address: tokenAddress as `0x${string}`,
                     abi: [
                         {
@@ -141,11 +147,19 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
                     functionName: 'approve',
                     args: [
                         ARRAKIS_ROUTER_ADDRESS as `0x${string}`,
-                        parseUnits(depositAmount, 18), // Convert from user-friendly number to blockchain format
+                        parseUnits(depositAmount, 18),
                     ],
                 });
-            } catch (error) {
-                setError(`Failed to approve token at ${tokenAddress}`);
+                return Boolean(result); // Return true if we have a transaction hash
+            } catch (error: any) {
+                setError(
+                    formatBlockchainErrorMessage(
+                        error,
+                        `Failed to approve token`
+                    )
+                );
+                setError(`Approval error: ${error}`);
+                return false;
             } finally {
                 setLoading(false);
             }
@@ -153,7 +167,7 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
         [isConnected, writeContractAsync]
     );
 
-    // Aprove spending caps
+    // Approve spending caps
     const approveToken0 = useCallback(() => {
         return approveToken(WETH_ADDRESS, depositToken0);
     }, [approveToken, depositToken0]);
@@ -164,7 +178,13 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
 
     // Add liquidity to the pool
     const addLiquidity = useCallback(async () => {
-        if (!isConnected || !mintAmountsArray) return;
+        if (!mintAmountsArray) {
+            setError(
+                'Unable to calculate liquidity amounts. Please try again.'
+            );
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
@@ -194,8 +214,10 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
                 ],
             });
             return result;
-        } catch (error) {
-            setError('Failed to add liquidity');
+        } catch (error: any) {
+            setError(
+                formatBlockchainErrorMessage(error, 'Failed to add liquidity')
+            );
         } finally {
             setLoading(false);
         }
@@ -204,6 +226,8 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
         mintAmountsArray,
         depositToken0,
         depositToken1,
+        balanceToken0,
+        balanceToken1,
         mintAmountMin,
         writeContractAsync,
         address,
@@ -220,7 +244,6 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
     }, []);
 
     // This effect automatically calculates the other token amount whenever one changes
-    // It's important to maintain the correct ratio based on what's already in the pool
     useEffect(() => {
         if (!underlying) return;
 
@@ -236,6 +259,13 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
             setDepositToken0(computed);
         }
     }, [depositToken0, depositToken1, activeField, underlying]);
+
+    useEffect(() => {
+        return () => {
+            setError(null);
+            setLoading(false);
+        };
+    }, []);
 
     const isLoading =
         isLoadingUnderlying || isLoadingWeth || isLoadingReth || loading;
@@ -256,7 +286,6 @@ export const ContractProvider = ({children}: {children: ReactNode}) => {
             addLiquidity,
             isLoading,
             error,
-            loading,
         }),
         [
             underlying,

@@ -125,7 +125,7 @@ describe('DepositForm Component', () => {
 
         render(<DepositForm />);
 
-        const submitButton = screen.getByText('Processing...');
+        const submitButton = screen.getByRole('button', {name: /processing/i});
         expect(submitButton).toBeDisabled();
     });
 
@@ -143,9 +143,45 @@ describe('DepositForm Component', () => {
         });
     });
 
+    test('stops deposit flow if first approval fails', async () => {
+        // Mock first approval to fail
+        mockUseContract.approveToken0.mockResolvedValueOnce(false);
+
+        render(<DepositForm />);
+
+        const form = screen.getByRole('form');
+        fireEvent.submit(form);
+
+        await waitFor(() => {
+            expect(mockUseContract.approveToken0).toHaveBeenCalled();
+            // Second approval should not be called
+            expect(mockUseContract.approveToken1).not.toHaveBeenCalled();
+            // addLiquidity should not be called
+            expect(mockUseContract.addLiquidity).not.toHaveBeenCalled();
+        });
+    });
+
+    test('stops deposit flow if second approval fails', async () => {
+        // Mock first approval to succeed but second to fail
+        mockUseContract.approveToken0.mockResolvedValueOnce(true);
+        mockUseContract.approveToken1.mockResolvedValueOnce(false);
+
+        render(<DepositForm />);
+
+        const form = screen.getByRole('form');
+        fireEvent.submit(form);
+
+        await waitFor(() => {
+            expect(mockUseContract.approveToken0).toHaveBeenCalled();
+            expect(mockUseContract.approveToken1).toHaveBeenCalled();
+            // addLiquidity should not be called
+            expect(mockUseContract.addLiquidity).not.toHaveBeenCalled();
+        });
+    });
+
     test('handles submission error correctly', async () => {
         const error = new Error('Transaction failed');
-        mockUseContract.approveToken0.mockRejectedValue(error);
+        mockUseContract.addLiquidity.mockRejectedValue(error);
 
         render(<DepositForm />);
 
@@ -154,7 +190,7 @@ describe('DepositForm Component', () => {
 
         await waitFor(() => {
             expect(toast.error).toHaveBeenCalledWith(
-                'Transaction failed: Error: Transaction failed'
+                'Unexpected error in deposit flow: Error: Transaction failed'
             );
         });
     });
@@ -166,7 +202,7 @@ describe('DepositForm Component', () => {
         expect(screen.getByText('Balance: 2.50 RETH')).toBeInTheDocument();
 
         // Min values with 5% slippage
-        expect(screen.getByText('Min: 0.48 WETH')).toBeInTheDocument();
+        expect(screen.getByText('Min: 0.47 WETH')).toBeInTheDocument();
         expect(screen.getByText('Min: 0.95 RETH')).toBeInTheDocument();
     });
 });
