@@ -1,34 +1,108 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Arrakis Integration
 
-## Getting Started
+A simple dApp for interacting with Arrakis Finance liquidity pools. Deposit WETH and RETH to earn fees.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
+# Install dependencies
+yarn
+
+# Run development server
 yarn dev
-# or
-pnpm dev
+
+# Run tests
+yarn test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Architecture Decisions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Single Context Pattern
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+Used a single `ContractContext` to manage all blockchain interactions. This keeps state management simple and avoids prop drilling. All contract calls, state, and error handling live in one place. Easier for you to review and test.
 
-## Learn More
+### Atomic Components
 
-To learn more about Next.js, take a look at the following resources:
+Built small, focused components that do one thing well:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+-   `Input.tsx` - Handles numeric input with validation
+-   `PrimaryButton.tsx` - Consistent button styling with loading states
+-   `DepositForm.tsx` - Combines components for the deposit flow and submits transaction
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+This makes testing easier and components more reusable.
 
-## Deploy on Vercel
+### Gas Optimization
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Optimized contract interactions to minimize gas costs:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+-   Approvals happen inside try/catch blocks to maintain normal gas fees
+-   Only calculate values once to avoid duplicate blockchain calls
+-   Proper error detection for user rejections vs actual errors
+-   Clear success/failure indicators to avoid unnecessary transactions
+
+### Testing First
+
+Built tests before implementing components to ensure proper behavior:
+
+-   Context tests verify contract interactions work correctly
+-   Component tests ensure UI behaves as expected
+-   Edge case tests for scientific notation, zero values, etc.
+
+This approach caught several bugs early and made development faster.
+
+## Assumptions
+
+1. Users have MetaMask or another web3 wallet installed
+2. Users have WETH and RETH in their wallet
+3. The Arrakis vault contract is already deployed and working
+4. 5% slippage is acceptable for most users
+
+## Known Limitations
+
+1. No mobile wallet support (WalletConnect, etc.)
+2. Limited error handling for complex contract failures
+3. No transaction history or position management
+4. Only supports one pool (WETH/RETH)
+5. Only supports slippage of 5%
+
+## Areas for Improvement
+
+1. Add support for multiple pools
+2. Improve mobile support
+3. Add more comprehensive error handling
+4. Implement better loading states
+5. Implement multiple hooks for the contract calls if the context gets too large
+
+## Local Development
+
+```bash
+# Install dependencies
+yarn
+
+# Run development server
+yarn dev
+
+# Run tests
+yarn test
+
+# Run specific test files
+yarn test components
+yarn test contexts
+
+# Build for production
+yarn build
+```
+
+## Contract Interactions
+
+All contract addresses are in `lib/constants.ts`.
+
+## Formatting Utilities
+
+Simple utilities handle:
+
+-   Number formatting for display
+-   User input validation (prevents non-numeric input)
+-   Blockchain error message formatting
+
+These keep the UI clean and user-friendly without unnecessary complexity.
