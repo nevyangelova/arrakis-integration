@@ -2,6 +2,8 @@
 
 A simple dApp for interacting with Arrakis Finance liquidity pools. Deposit WETH and RETH to earn fees.
 
+![arrakis](https://github.com/user-attachments/assets/a0b21c39-1554-4626-8104-8c59fbbf95cb)
+
 ## Setup
 
 ```bash
